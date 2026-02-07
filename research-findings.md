@@ -186,9 +186,193 @@ MCP Tool Search is already production-ready and enabled by default. OpenClaw sho
 
 ---
 
+## 4. MemGPT/Letta Tiered Memory
+
+### What It Is
+MemGPT (Memory-GPT) is an OS-inspired approach to LLM context management that treats the context window as "RAM" and external databases as "disk storage." Originally a research project from UC Berkeley, it's now part of the Letta agent framework. The key insight: LLMs can manage their own memory through tool calls, moving data in and out of context as needed.
+
+### How It Works
+
+**Memory Hierarchy:**
+```
+┌─────────────────────────────────────────────┐
+│          MAIN CONTEXT (In-Context)          │
+├─────────────────────────────────────────────┤
+│  System Instructions    │  ~1,076 tokens    │
+│  Core Memory Blocks     │  ~86 tokens       │
+│  Function Definitions   │  ~633 tokens      │
+│  FIFO Message Queue     │  Variable         │
+│  External Memory Summary│  ~107 tokens      │
+├─────────────────────────────────────────────┤
+│  TOTAL BASELINE:        │  ~2,000 tokens    │
+└─────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│       EXTERNAL CONTEXT (Out-of-Context)     │
+├─────────────────────────────────────────────┤
+│  Recall Memory    │  Searchable conversation│
+│                   │  history (vector DB)    │
+│  Archival Memory  │  Long-term facts,       │
+│                   │  documents (ChromaDB)   │
+└─────────────────────────────────────────────┘
+```
+
+**Memory Tiers:**
+1. **Core Memory (always in-context)**: Structured blocks with character limits, always accessible, self-edited by the LLM
+2. **Recall Memory**: Complete conversation history, searchable via semantic search
+3. **Archival Memory**: Long-term storage for facts and documents, requires explicit retrieval
+
+**Paging Mechanism:**
+- LLM receives memory-editing tools: `memory_replace`, `memory_insert`, `memory_rethink`
+- **Eviction**: When context hits 70% (warning) or 100% (flush), messages are summarized and moved to recall
+- **Retrieval**: LLM uses search tools to pull relevant memories back into context
+- **Heartbeat**: LLM can request continued execution via `request_heartbeat=true` for multi-step reasoning
+
+### Token Usage (GPT-4o-mini, 32K context)
+| Component | Tokens | % of Context |
+|-----------|--------|--------------|
+| System instructions | 1,076 | 3.4% |
+| Core memory | 86 | 0.3% |
+| Function definitions | 633 | 2.0% |
+| Messages/conversation | 179 | 0.6% |
+| External memory summary | 107 | 0.3% |
+| **Initial overhead** | **~2,081** | **6.5%** |
+
+**Context Management Thresholds:**
+- Warning at 70%: System prompts LLM to save important data
+- Flush at 100%: Evict ~50% of messages, generate recursive summary
+
+### Letta V1 Architecture (2025)
+The latest Letta release moves away from tool-based control:
+- Removes `thinking` and `request_heartbeat` tool parameters
+- Uses native model reasoning capabilities (e.g., OpenAI Responses API)
+- Model-agnostic (no longer requires tool-calling capability)
+- Simpler prompting, relies on models trained for agentic patterns
+
+### Benchmark Performance
+- **Letta Filesystem approach**: 74.0% on LoCoMo benchmark (GPT-4o-mini)
+- **Beats Mem0 graph variant**: 68.5% on same benchmark
+- **Terminal-Bench**: Letta ranked #4 overall, #1 for open source
+- Key insight: "Agent capabilities matter more than the tools" — filesystem operations outperformed specialized memory APIs
+
+### Estimated Token Impact for OpenClaw
+- **Base overhead**: ~2K tokens for MemGPT-style system
+- **Trade-off**: Multi-step reasoning requires GPT calls for memory operations
+- **Concern**: "Memory is actively managed, more context used by internal actions like updating or retrieving from memory"
+- **Potential savings**: Unbounded context via virtualization, but with API call overhead
+
+### Implementation Path for OpenClaw
+1. **Study Letta patterns**: Core memory blocks + recursive summarization already align with OpenClaw's daily log + compaction approach
+2. **Consider selective adoption**:
+   - Memory blocks → Similar to OpenClaw's MEMORY.md structured sections
+   - Recursive summarization → Could enhance existing compaction
+   - Self-editing memory → Already in OpenClaw via /remember
+3. **Evaluate overhead**: MemGPT's ~2K token baseline + function calls may not improve on OpenClaw's current approach
+4. **Benchmark against OpenClaw**: Compare LoCoMo scores with current OpenClaw memory system
+
+### Comparison with OpenClaw
+| Feature | MemGPT/Letta | OpenClaw Current |
+|---------|--------------|------------------|
+| In-context memory | Core memory blocks | MEMORY.md + daily logs |
+| Out-of-context | Archival + Recall DBs | Hybrid BM25 + vector |
+| Compaction | Recursive summarization | Pre-flush compaction |
+| Self-editing | Tool-based memory edits | /remember skill |
+| Token overhead | ~2K baseline | Similar (bootstrap files) |
+
+### Sources
+- [MemGPT Research Paper](https://arxiv.org/abs/2310.08560)
+- [Letta Documentation](https://docs.letta.com/concepts/memgpt/)
+- [Letta GitHub](https://github.com/letta-ai/letta)
+- [Letta V1 Agent Architecture](https://www.letta.com/blog/letta-v1-agent)
+- [Agent Memory Blog](https://www.letta.com/blog/agent-memory)
+- [Memory Benchmarking](https://www.letta.com/blog/benchmarking-ai-agent-memory)
+- [Virtual Context Management](https://www.leoniemonigatti.com/blog/memgpt.html)
+
+### Verdict: **INVESTIGATE**
+MemGPT's OS-inspired approach is intellectually elegant but may not offer significant advantages over OpenClaw's current architecture. Key findings:
+- OpenClaw already has similar patterns: structured in-context memory, external search, compaction
+- Letta's benchmark shows filesystem-based approaches beat specialized memory APIs
+- The ~2K token overhead is comparable to what OpenClaw already uses
+- Multi-step memory operations add API call latency
+
+**Recommendation**: Study Letta's recursive summarization algorithm for potential compaction improvements. Don't adopt full MemGPT framework — OpenClaw's simpler file-based approach aligns with Letta's own finding that "agent capabilities matter more than the tools."
+
+---
+
+## 5. A-MEM (Agentic Memory)
+
+### What It Is
+A-MEM is a 2025 NeurIPS-accepted paper introducing a Zettelkasten-inspired memory system for LLM agents. Unlike sequential memory storage, it creates interconnected knowledge networks through dynamic indexing and linking.
+
+### How It Works
+**Zettelkasten Principles:**
+- Each memory becomes a "note" with structured attributes
+- Notes are interconnected via semantic links
+- System discovers relationships between new and historical memories
+- Memory network evolves as new information arrives
+
+**Memory Structure:**
+```
+Memory Note {
+  content: string       // Primary information
+  context: string       // Generated semantic description
+  keywords: string[]    // LLM-extracted terms
+  tags: string[]        // Category labels
+  timestamp: string     // YYYYMMDDHHmm format
+  connections: Note[]   // Bidirectional links to related memories
+}
+```
+
+**Core Operations:**
+1. **Note Generation**: When adding memory, generate structured attributes via LLM
+2. **Link Discovery**: Analyze historical memories for semantic connections
+3. **Memory Evolution**: New additions trigger updates to related memory metadata
+4. **Retrieval**: ChromaDB vector search + graph traversal for connected context
+
+### Benchmark Performance
+- Accepted to NeurIPS 2025
+- "Superior improvement against existing SOTA baselines" on 6 foundation models
+- Evaluated on BLEU, ROUGE, METEOR, and semantic similarity metrics
+- Outperforms MemGPT, LOCOMO, ReadAgent, MemoryBank on dialogue tasks
+
+### Token Efficiency
+The paper emphasizes efficiency through:
+- ChromaDB vector indexing reduces full memory scans
+- Selective retrieval via keywords/tags
+- Connected context provides relevant information without loading everything
+
+*Note: Specific token counts (e.g., the "4,600 tokens vs MemGPT's 16,900" from the prompt) were not confirmed in available sources — this may be from a different paper or earlier version.*
+
+### Implementation Path for OpenClaw
+1. **Structured memory notes**: Add metadata (keywords, context) to memory entries
+2. **Memory linking**: Track which memories reference each other
+3. **Evolution triggers**: When saving new memory, update related memories' context
+4. **Hybrid retrieval**: Combine vector search with link traversal
+
+### Comparison with OpenClaw
+| Feature | A-MEM | OpenClaw Current |
+|---------|-------|------------------|
+| Storage | ChromaDB + links | BM25 + vector |
+| Structure | Zettelkasten notes | Daily logs + MEMORY.md |
+| Connections | Bidirectional links | None explicit |
+| Evolution | Auto-updates related memories | Manual |
+
+### Sources
+- [A-MEM Paper (arXiv)](https://arxiv.org/abs/2502.12110)
+- [A-MEM GitHub](https://github.com/agiresearch/A-mem)
+- [Semantic Scholar](https://www.semanticscholar.org/paper/A-MEM:-Agentic-Memory-for-LLM-Agents-Xu-Liang/1f35a15fe9df43d24ec6ea551ec6c9766c17eccf)
+
+### Verdict: **INVESTIGATE**
+A-MEM's Zettelkasten approach is promising for reducing retrieval noise by surfacing connected context. However:
+- Requires LLM calls for note generation and link discovery (overhead)
+- ChromaDB dependency adds infrastructure
+- Benchmark improvements are on dialogue tasks, not coding agents
+
+**Recommendation**: Consider adding lightweight memory linking to OpenClaw's existing system. Track explicit "related to" connections between daily log entries and MEMORY.md sections without full Zettelkasten overhead.
+
+---
+
 ## Topics Remaining
-- MemGPT/Letta tiered memory
-- A-Mem paper analysis
 - Anthropic context engineering framework
 - Knowledge graphs & RAG approaches
 

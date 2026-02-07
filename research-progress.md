@@ -25,7 +25,21 @@
 - Experimental MCP CLI flag (`ENABLE_EXPERIMENTAL_MCP_CLI=true`) can eliminate MCP overhead entirely but has trade-offs
 - Accuracy improves with selective loading: Opus 4.5 went from 79.5% → 88.1%
 
+### Iteration 3 (2026-02-07)
+**Completed:**
+- Researched MemGPT/Letta tiered memory architecture
+- Researched A-MEM (Zettelkasten-inspired memory system)
+
+**Key Findings:**
+- MemGPT treats context as "RAM" with paging to external "disk" storage
+- Base overhead: ~2K tokens for system instructions + core memory + functions
+- Letta V1 moves away from tool-based control to native model reasoning
+- Letta filesystem approach (74.0% LoCoMo) beats Mem0 graph (68.5%)
+- Key insight: "Agent capabilities matter more than the tools"
+- A-MEM uses Zettelkasten note-linking for connected context retrieval
+- OpenClaw already has similar patterns to MemGPT (MEMORY.md, compaction, hybrid search)
+
 **Next Steps:**
-- MemGPT/Letta tiered memory
-- A-Mem paper analysis
-- Anthropic context engineering framework
+- Anthropic context engineering framework (Write/Select/Compress/Isolate)
+- Dynamic relevance scoring and multi-agent context isolation
+- Knowledge graphs & RAG approaches (Graphiti)

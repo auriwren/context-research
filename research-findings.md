@@ -508,8 +508,134 @@ The framework validates OpenClaw's current architecture while pointing to increm
 
 ---
 
+## 7. Dynamic Relevance Scoring
+
+### What It Is
+Dynamic relevance scoring is the practice of computing context priority at runtime based on multiple signals—recency, semantic relevance, importance—rather than using static ordering or naive truncation. The goal is to ensure the most valuable context items occupy limited token budgets while less relevant content is deferred or discarded.
+
+### How It Works
+
+**Composite Scoring Formula (from Generative Agents):**
+The foundational approach from Stanford's Generative Agents combines three signals:
+```
+score(memory) = α × recency + β × importance + γ × relevance
+```
+
+| Signal | Computation | Purpose |
+|--------|-------------|---------|
+| **Recency** | Exponential decay (e.g., 0.995^hours) | Prioritize recent events |
+| **Importance** | LLM-rated 1-10 score | Distinguish mundane from significant |
+| **Relevance** | Cosine similarity to current query | Match semantic context |
+
+**Reranking Pipeline:**
+Modern systems add a reranking stage after initial retrieval:
+1. **Retrieve**: Broad candidate set via embeddings (top 50-100)
+2. **Score**: Cross-encoder or LLM evaluates query-document pairs
+3. **Reorder**: Prioritize highest-scoring items for context inclusion
+4. **Trim**: Fit within token budget by cutting lowest scores
+
+**Token-Budget-Aware Reasoning (TALE):**
+Recent research shows token budgets can guide reasoning itself:
+- Estimate query complexity upfront
+- Allocate proportional token budget
+- Result: 68.9% token reduction with <5% accuracy loss
+
+### Key Techniques
+
+#### 1. Cross-Encoder Reranking
+Cross-encoders process query+document jointly (rather than embedding separately), capturing subtle semantic relationships.
+
+**Leading Models:**
+| Model | Strengths | Trade-offs |
+|-------|-----------|------------|
+| **Cohere Rerank 4** | 32K context, self-learning, 100+ languages | API cost, vendor lock-in |
+| **BGE Reranker** | Open-source, self-hostable | Requires infrastructure |
+| **ColBERT** | Fast token-level matching | Less precise than cross-encoders |
+| **RankZephyr** | LLM-based zero-shot (7B params) | Higher latency |
+| **Jina Reranker v2** | Multilingual, code search | API-dependent |
+
+**Impact**: Reranking typically improves RAG accuracy by 20-35% with 200-500ms additional latency.
+
+#### 2. Just-In-Time (JIT) Context Selection
+Rather than loading all context upfront, dynamically select based on current needs:
+- Simple queries → more retrieved documents, less history
+- Complex queries → more conversation context, less documents
+- Reformulate queries as understanding evolves
+
+#### 3. Hybrid Retrieval + Reranking
+Elasticsearch's research shows optimal configuration:
+- Combine sparse (ELSER) + dense vector search
+- 84.3% recall@10, 0.53 MRR
+- Retrieve 5 semantic chunks from top 5 documents
+- Result: 93.3% task completion with 40% context size reduction
+
+#### 4. ACAN (Auxiliary Cross Attention Network)
+Novel approach using LLM-trained attention for memory retrieval:
+- Agent state becomes query vector
+- Memories are key-value pairs
+- Attention weights determine retrieval priority
+- LLM provides training signal for optimization
+
+### Estimated Token Impact
+| Technique | Token Savings | Accuracy Trade-off |
+|-----------|---------------|-------------------|
+| TALE budget-aware reasoning | 68.9% | <5% loss |
+| Semantic chunking + proximity | 40% context reduction | 93.3% task completion |
+| Reranking (top 20→5) | ~75% of retrieved context | +20-35% accuracy |
+| JIT context vs full load | Variable (50-80%) | Depends on query type |
+
+### Implementation Path for OpenClaw
+
+1. **Immediate: Enhance memory retrieval scoring**
+   - Add importance scores when saving to MEMORY.md (LLM-rated 1-10)
+   - Implement exponential decay for daily log entries
+   - Combine with existing BM25 + vector similarity
+
+2. **Short-term: Add reranking layer**
+   - Integrate BGE Reranker (open-source) or Cohere Rerank API
+   - Apply to memory search results before context injection
+   - Target: rerank top-20 results down to top-5
+
+3. **Medium-term: JIT context patterns**
+   - Classify query complexity before context allocation
+   - Simple queries: minimal history, more tool results
+   - Complex queries: fuller history, condensed tool output
+
+4. **Investigate: Token-budget prompting**
+   - Experiment with TALE-style budget hints in system prompts
+   - "Respond concisely within ~500 tokens" for simple tasks
+
+### Comparison with OpenClaw
+
+| Feature | Current OpenClaw | With Dynamic Scoring |
+|---------|-----------------|---------------------|
+| Memory retrieval | BM25 + vector | + importance + recency decay |
+| Reranking | None | Cross-encoder rerank layer |
+| Context allocation | Fixed | Query-complexity aware |
+| Budget awareness | None | Token budget hints |
+
+### Sources
+- [Elastic: Context Engineering Relevance](https://www.elastic.co/search-labs/blog/context-engineering-relevance-ai-agents-elasticsearch)
+- [Token-Budget-Aware LLM Reasoning (TALE)](https://arxiv.org/abs/2412.18547)
+- [Maxim: Context Window Management Strategies](https://www.getmaxim.ai/articles/context-window-management-strategies-for-long-context-ai-agents-and-chatbots/)
+- [Frontiers: Cross Attention Networks for Memory Retrieval](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2025.1591618/full)
+- [ACM: Memory Mechanisms in LLM Agents Survey](https://dl.acm.org/doi/10.1145/3748302)
+- [n8n: Implementing Rerankers in AI Workflows](https://blog.n8n.io/implementing-rerankers-in-your-ai-workflows/)
+- [NVIDIA: Introduction to LLM Agents](https://developer.nvidia.com/blog/introduction-to-llm-agents/)
+
+### Verdict: **RECOMMENDED**
+
+Dynamic relevance scoring directly addresses context bloat by ensuring only the most valuable tokens are included. Key recommendations:
+
+1. **Adopt composite scoring** (recency + importance + relevance) for memory retrieval—this is a well-validated pattern from Generative Agents research
+2. **Add reranking layer** to existing search—20-35% accuracy improvement with minimal latency cost
+3. **Implement JIT context selection**—query-aware allocation prevents over-fetching
+
+OpenClaw's hybrid BM25 + vector search provides a strong foundation. Adding importance scoring, recency decay, and a reranking layer would significantly improve context quality without major architectural changes.
+
+---
+
 ## Topics Remaining
-- Dynamic relevance scoring
 - Multi-agent context isolation patterns
 - Knowledge graphs & RAG approaches (Graphiti)
 

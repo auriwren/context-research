@@ -51,7 +51,24 @@
 - OpenClaw already implements all 4 strategies; main opportunities are context awareness and server-side compaction upgrade
 
 **Next Steps:**
-- Dynamic relevance scoring techniques
+- Multi-agent context isolation patterns
+- Knowledge graphs & RAG approaches (Graphiti)
+- Compile final recommendations
+
+### Iteration 5 (2026-02-07)
+**Completed:**
+- Researched Dynamic Relevance Scoring techniques
+
+**Key Findings:**
+- Composite scoring (recency + importance + relevance) is the validated approach from Generative Agents research
+- Recency via exponential decay (0.995^hours), importance via LLM-rating (1-10), relevance via cosine similarity
+- Cross-encoder reranking improves RAG accuracy by 20-35% with 200-500ms latency
+- TALE framework achieves 68.9% token reduction with <5% accuracy loss via budget-aware reasoning
+- Semantic chunking + proximity scoring: 40% context reduction with 93.3% task completion
+- Leading rerankers: Cohere Rerank 4 (32K context), BGE Reranker (open-source), RankZephyr (LLM-based)
+- JIT context selection: allocate context based on query complexity, not fixed ratios
+
+**Next Steps:**
 - Multi-agent context isolation patterns
 - Knowledge graphs & RAG approaches (Graphiti)
 - Compile final recommendations

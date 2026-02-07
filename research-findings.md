@@ -91,8 +91,102 @@ More mature with larger funding, but Supermemory claims significantly faster ret
 
 ---
 
+## 3. Tool Schema Optimization
+
+### What It Is
+Tool schemas consume significant tokens in every API request — the full JSON schema for each tool is sent with every message. With 11+ skills and MCP servers, this can easily reach 15K-70K+ tokens before any conversation starts. Tool schema optimization refers to techniques to defer, compress, or selectively load tool definitions.
+
+### The Problem
+- GitHub MCP server alone: ~46K tokens
+- 5-server setup with 58 tools: ~55K tokens
+- Heavy MCP users: 50-100K+ tokens of overhead
+- This consumes 25-50% of Claude's 200K context window before work begins
+
+### Key Solutions
+
+#### 1. MCP Tool Search (defer_loading)
+**How it works:**
+- Tools marked with `defer_loading: true` aren't loaded into context initially
+- Claude receives a lightweight Tool Search Tool instead of full definitions
+- When Claude needs a tool, it searches by keyword (regex or BM25)
+- Only 3-5 relevant tools loaded on-demand (~3K tokens)
+- Auto-activates when tool definitions exceed 10K tokens
+
+**Token impact:**
+- Before: ~77K tokens with 50+ tools
+- After: ~8.7K tokens (85% reduction)
+- Preserves 95% of context window
+
+**Accuracy improvement:**
+- Opus 4: 49% → 74%
+- Opus 4.5: 79.5% → 88.1%
+
+#### 2. Token-Efficient Tool Use (API Beta)
+**How it works:**
+- Uses beta header `token-efficient-tools-2025-02-19` (Claude 3.7)
+- Built into Claude 4+ models by default
+- Reduces tool call **output** tokens, not schema tokens
+
+**Token impact:**
+- Average: 14% reduction in output tokens
+- Up to: 70% reduction in some cases
+
+#### 3. Experimental MCP CLI Flag
+**How it works:**
+- Environment variable: `ENABLE_EXPERIMENTAL_MCP_CLI=true`
+- Wraps MCP tools behind CLI commands instead of native tool calls
+- Progressive schema discovery via Bash
+
+**Token impact:**
+- ~32K tokens recovered with 2 MCP servers
+- Heavy users: 50-70K tokens saved
+
+**Trade-offs:**
+- Extra latency (schema fetch per tool)
+- Bash escaping issues with complex JSON
+- Tools invisible in UI until invoked
+- Experimental/unsupported
+
+#### 4. Programmatic Tool Calling
+**How it works:**
+- Tool orchestration moves to code execution environment
+- Intermediate results don't pollute model context
+- Only final summaries returned to context
+
+**Token impact:**
+- 37% reduction on complex research tasks
+- Average usage: 43,588 → 27,297 tokens
+
+### Comparison with OpenClaw's Current Approach
+| Feature | OpenClaw Current | Tool Search | MCP CLI Flag |
+|---------|-----------------|-------------|--------------|
+| Skills | Lazy-loaded (metadata only) | N/A | N/A |
+| MCP Tools | Full schemas upfront | Deferred (85% reduction) | CLI wrapper (100% reduction) |
+| Tool Results | Trimmed | Unchanged | Via Bash |
+| Maturity | Production | Production (default) | Experimental |
+
+### Implementation Path for OpenClaw
+1. **Immediate**: Verify MCP Tool Search is active (should be default when >10K tool tokens)
+2. **Short-term**: Apply `defer_loading: true` to rarely-used MCP tools
+3. **Investigate**: Token-efficient tool use for Claude 4+ (may already be default)
+4. **Consider**: Programmatic tool calling for heavy operations (move orchestration to code)
+5. **Monitor**: MCP CLI flag for potential future integration when stable
+
+### Sources
+- [Token-Efficient Tool Use - Claude Docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/token-efficient-tool-use)
+- [MCP Tool Search Guide - Cyrus](https://www.atcyrus.com/stories/mcp-tool-search-claude-code-context-pollution-guide)
+- [Claude Code Hidden MCP Flag - Paddo](https://paddo.dev/blog/claude-code-hidden-mcp-flag/)
+- [Advanced Tool Use - Anthropic Engineering](https://www.anthropic.com/engineering/advanced-tool-use)
+- [Token Saving Updates - Anthropic](https://claude.com/blog/token-saving-updates)
+- [GitHub Issue #7336: Lazy Loading for MCP](https://github.com/anthropics/claude-code/issues/7336)
+- [GitHub Issue #11364: Lazy-load MCP tool definitions](https://github.com/anthropics/claude-code/issues/11364)
+
+### Verdict: **RECOMMENDED**
+MCP Tool Search is already production-ready and enabled by default. OpenClaw should ensure it's active and properly configured. The 85% reduction in tool schema tokens is substantial. For custom tools/skills, apply similar lazy-loading patterns. The experimental MCP CLI flag shows the direction Anthropic is heading but isn't ready for production use.
+
+---
+
 ## Topics Remaining
-- Tool schema optimization (OpenClaw issue #6691)
 - MemGPT/Letta tiered memory
 - A-Mem paper analysis
 - Anthropic context engineering framework

@@ -2,7 +2,6 @@
 
 ## Tasks
 
-- [ ] Research Tool Schema Optimization: investigate OpenClaw issue #6691, toolPolicy allowlists
 - [ ] Research MemGPT/Letta: tiered memory architecture, LLM-driven paging patterns
 - [ ] Research A-Mem: analyze paper (arxiv 2502.12110), compare token efficiency to MemGPT
 - [ ] Research Anthropic's Context Engineering: Write/Select/Compress/Isolate framework
@@ -15,3 +14,4 @@
 
 - [x] Research Supermemory: docs, architecture, OpenClaw plugin, compaction survival, cost analysis
 - [x] Research Mem0: compare with Supermemory, evaluate OpenClaw plugin ecosystem
+- [x] Research Tool Schema Optimization: MCP Tool Search, defer_loading, token-efficient tool use

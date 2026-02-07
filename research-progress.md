@@ -14,7 +14,18 @@
 - External memory APIs reduce per-request context by ~70% vs full conversation replay
 - Supermemory claims 25× faster retrieval than Mem0
 
+### Iteration 2 (2026-02-07)
+**Completed:**
+- Researched Tool Schema Optimization: MCP Tool Search, defer_loading, token-efficient tool use beta
+
+**Key Findings:**
+- MCP Tool Search achieves 85% reduction in tool schema tokens (77K → 8.7K)
+- Auto-activates when tool definitions exceed 10K tokens (now default in Claude Code)
+- Token-efficient tool use built into Claude 4+ models (up to 70% output token reduction)
+- Experimental MCP CLI flag (`ENABLE_EXPERIMENTAL_MCP_CLI=true`) can eliminate MCP overhead entirely but has trade-offs
+- Accuracy improves with selective loading: Opus 4.5 went from 79.5% → 88.1%
+
 **Next Steps:**
-- Tool schema optimization (OpenClaw issue #6691)
 - MemGPT/Letta tiered memory
 - A-Mem paper analysis
+- Anthropic context engineering framework

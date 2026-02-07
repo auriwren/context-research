@@ -372,9 +372,146 @@ A-MEM's Zettelkasten approach is promising for reducing retrieval noise by surfa
 
 ---
 
+## 6. Anthropic Context Engineering Framework
+
+### What It Is
+Context engineering is the discipline of curating and maintaining the optimal set of tokens during LLM inference. Anthropic views it as the natural evolution of prompt engineering—answering the question: "What configuration of context is most likely to generate our model's desired behavior?" The framework recognizes that context, not model intelligence, is the primary bottleneck in AI applications.
+
+### The Four Core Strategies: Write, Select, Compress, Isolate
+
+#### 1. **Write** — Externalizing Context
+Saving information outside the context window so it's available without consuming tokens.
+
+**Techniques:**
+- **Scratchpads**: Agents save intermediate results to disk/state objects via tool calls
+- **Memory files**: Persistent artifacts (like MEMORY.md, CLAUDE.md) that capture decisions across sessions
+- **External storage**: File systems, databases, vector stores for tool outputs
+
+**Implementation example**: Rather than keeping all tool outputs in message history, write them externally and keep only references or summaries in context.
+
+#### 2. **Select** — Pulling Relevant Information
+Choosing which context to include at each step via dynamic retrieval.
+
+**Techniques:**
+- **Memory selection**: Embeddings/knowledge graphs retrieve task-relevant facts
+- **Tool selection**: RAG-based filtering of tool descriptions (achieves 3× accuracy improvement)
+- **Just-in-Time (JIT) context**: Load what you need when you need it, using lightweight identifiers and progressive disclosure
+
+**Key insight**: Balance between too little context (poor decisions) and too much (bloated windows, context distraction).
+
+#### 3. **Compress** — Reducing Size While Retaining Value
+Summarizing, abstracting, or reformatting information to be more concise.
+
+**Techniques:**
+- **Summarization**: Recursive/hierarchical summarization of agent trajectories
+- **Agent boundaries**: Compressed summaries at handoffs between multi-agent systems
+- **Trimming**: Hard-coded heuristics like removing older messages
+- **Auto-compact**: Claude Code triggers at 95% context usage, generating continuity summaries
+
+**Claude's compaction**: Server-side API that automatically summarizes when approaching token threshold (default 150K tokens, minimum 50K).
+
+#### 4. **Isolate** — Splitting Context Across Components
+Using distinct agents/components for different subtasks to prevent unbounded growth.
+
+**Techniques:**
+- **Multi-agent**: Specialized sub-agents with isolated context windows running in parallel
+- **Sandboxing**: Tool outputs run in isolated environments (e.g., HuggingFace CodeAgent)
+- **State schemas**: Selective field exposure to LLM while preserving other data
+
+**Anthropic's approach**: Teams of cooperating agents, each applying different context engineering techniques, orchestrated by a lead agent.
+
+### Token Impact & Benchmarks
+
+| Metric | Value | Source |
+|--------|-------|--------|
+| Multi-agent overhead | Up to 15× more tokens than chat | LangChain/Anthropic |
+| Deep research naive | 500K tokens ($1-2 per run) | Anthropic example |
+| Tool selection RAG | 3× accuracy improvement | Research papers |
+| Auto-compact trigger | 95% context (default) | Claude Code |
+| Server-side trigger | 150K tokens (configurable) | Compaction API |
+| Context awareness | Real-time budget tracking | Claude 4.5 models |
+
+### Context Failure Modes
+Without proper engineering, agents experience:
+- **Context Poisoning**: Hallucinations persist in history
+- **Context Distraction**: Overwhelming irrelevant information
+- **Context Confusion**: Superfluous data influences responses
+- **Context Clash**: Conflicting information degrades output
+
+### Server-Side Compaction API (Claude Opus 4.6)
+
+**Key features:**
+- Automatic summarization at configurable threshold (default 150K tokens)
+- `pause_after_compaction` for preserving recent messages
+- Custom summarization instructions
+- Prompt caching on compaction blocks
+- Detailed usage tracking per iteration
+
+**Implementation:**
+```python
+context_management={
+    "edits": [{
+        "type": "compact_20260112",
+        "trigger": {"type": "input_tokens", "value": 100000},
+        "pause_after_compaction": True
+    }]
+}
+```
+
+### Context Awareness (Claude 4.5)
+
+Claude Sonnet 4.5 and Haiku 4.5 feature built-in context awareness:
+- Model receives token budget at start: `<budget:token_budget>200000</budget:token_budget>`
+- Updates after each tool call: `<system_warning>Token usage: 35000/200000; 165000 remaining</system_warning>`
+- Enables better task persistence and context management
+
+### Implementation Path for OpenClaw
+
+1. **Write**: OpenClaw already has MEMORY.md and daily logs (✓ implemented)
+2. **Select**: Hybrid BM25 + vector search exists (✓ implemented) — consider JIT context for skills
+3. **Compress**: Pre-flush compaction exists (✓ implemented) — evaluate server-side Compaction API upgrade
+4. **Isolate**: Sub-agents via Task tool available — consider more aggressive isolation for heavy operations
+
+**Specific opportunities:**
+- Use `pause_after_compaction` to preserve critical recent context
+- Apply context awareness prompts for long-running sessions
+- Adopt JIT context patterns for tool descriptions (aligns with MCP Tool Search)
+- Implement explicit failure mode detection (context clash, poisoning warnings)
+
+### Comparison with OpenClaw
+
+| Strategy | Anthropic Framework | OpenClaw Current |
+|----------|-------------------|------------------|
+| Write | Scratchpads, memory files | MEMORY.md, daily logs ✓ |
+| Select | JIT context, RAG tools | BM25 + vector, skills lazy-load ✓ |
+| Compress | Server-side compaction | Pre-flush compaction ✓ |
+| Isolate | Multi-agent orchestration | Task tool sub-agents ✓ |
+| Awareness | Token budget tracking | Not implemented |
+
+### Sources
+- [Anthropic: Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+- [LangChain: Context Engineering for Agents](https://blog.langchain.com/context-engineering-for-agents/)
+- [Claude Docs: Context Windows](https://platform.claude.com/docs/en/build-with-claude/context-windows)
+- [Claude Docs: Compaction](https://platform.claude.com/docs/en/build-with-claude/compaction)
+- [FlowHunt: Context Engineering for AI Agents](https://www.flowhunt.io/blog/context-engineering-for-ai-agents/)
+- [Context Engineering 101: What We Can Learn from Anthropic](https://omnigeorgio.beehiiv.com/p/context-engineering-101-what-we-can-learn-from-anthropic)
+
+### Verdict: **RECOMMENDED**
+
+OpenClaw already implements the core Write/Select/Compress/Isolate strategies. The main opportunities are:
+
+1. **Upgrade to server-side Compaction API** (when available for target model) — provides pause-after-compaction, custom instructions, and better token tracking
+2. **Add context awareness prompts** — enables models to track remaining budget and persist on tasks
+3. **Strengthen isolation** — more aggressive sub-agent delegation for tool-heavy operations
+
+The framework validates OpenClaw's current architecture while pointing to incremental improvements. Priority should be context awareness integration, as it's low-effort and provides immediate value for long-running sessions.
+
+---
+
 ## Topics Remaining
-- Anthropic context engineering framework
-- Knowledge graphs & RAG approaches
+- Dynamic relevance scoring
+- Multi-agent context isolation patterns
+- Knowledge graphs & RAG approaches (Graphiti)
 
 ## Prioritized Recommendations
 *(To be completed after all topics researched)*

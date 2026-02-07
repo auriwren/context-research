@@ -39,7 +39,19 @@
 - A-MEM uses Zettelkasten note-linking for connected context retrieval
 - OpenClaw already has similar patterns to MemGPT (MEMORY.md, compaction, hybrid search)
 
+### Iteration 4 (2026-02-07)
+**Completed:**
+- Researched Anthropic's Context Engineering Framework (Write/Select/Compress/Isolate)
+
+**Key Findings:**
+- Framework groups strategies into 4 buckets: Write (externalize), Select (JIT retrieval), Compress (summarize), Isolate (multi-agent)
+- Server-side Compaction API available for Claude Opus 4.6 with `pause_after_compaction` feature
+- Claude 4.5 models have built-in context awareness (token budget tracking)
+- Multi-agent systems can use 15× more tokens than chat — isolation helps but costs latency
+- OpenClaw already implements all 4 strategies; main opportunities are context awareness and server-side compaction upgrade
+
 **Next Steps:**
-- Anthropic context engineering framework (Write/Select/Compress/Isolate)
-- Dynamic relevance scoring and multi-agent context isolation
+- Dynamic relevance scoring techniques
+- Multi-agent context isolation patterns
 - Knowledge graphs & RAG approaches (Graphiti)
+- Compile final recommendations

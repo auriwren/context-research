@@ -635,8 +635,210 @@ OpenClaw's hybrid BM25 + vector search provides a strong foundation. Adding impo
 
 ---
 
+## 8. Multi-agent Context Isolation
+
+### What It Is
+Multi-agent context isolation is the practice of spawning separate AI agent instances with independent context windows to handle specialized subtasks. Instead of polluting a single context window with verbose tool outputs and exploratory work, agents delegate to subagents that operate in isolation and return only compacted summaries. This directly addresses the fundamental problem that heavy operations (codebase searches, test runs, documentation fetches) can consume 30-50% of context capacity, leaving insufficient room for reasoning.
+
+### How It Works
+
+**Core Mechanism:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    LEAD/PARENT AGENT                         │
+│                 (40-60% context target)                      │
+├─────────────────────────────────────────────────────────────┤
+│  Receives: Task description, minimal context                 │
+│  Returns:  Compacted summary (50-200 lines)                  │
+│  Never sees: Raw tool outputs, intermediate reasoning        │
+└─────────────────────────────────────────────────────────────┘
+           │                    │                    │
+           ▼                    ▼                    ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│   SUBAGENT A     │ │   SUBAGENT B     │ │   SUBAGENT C     │
+│ (isolated ctx)   │ │ (isolated ctx)   │ │ (isolated ctx)   │
+├──────────────────┤ ├──────────────────┤ ├──────────────────┤
+│ Glob: 500 lines  │ │ Grep: 2000 lines │ │ Web: 5000 chars  │
+│ Read: 3000 lines │ │ Read: 4000 lines │ │ Parse: 1000 lines│
+│ → Returns: 100   │ │ → Returns: 150   │ │ → Returns: 80    │
+└──────────────────┘ └──────────────────┘ └──────────────────┘
+```
+
+**Key Patterns:**
+
+| Pattern | Description | Use Case |
+|---------|-------------|----------|
+| **Hierarchical Delegation** | Lead agent spawns specialized workers | Research, multi-domain tasks |
+| **Parallel Exploration** | Multiple subagents run concurrently | Independent analyses (security + tests + docs) |
+| **Pipeline Isolation** | Sequential handoffs between specialized agents | Build → test → deploy workflows |
+| **Artifact-Based Communication** | Subagents write to filesystem, pass references | Large outputs that shouldn't transit through context |
+
+**Communication Flow:**
+1. Parent agent identifies heavy operation or specialized task
+2. Spawns subagent with focused prompt and restricted tools
+3. Subagent executes in isolated context (full access to its 200K window)
+4. Subagent returns compacted summary (50-200 lines)
+5. Parent maintains clean context (40-60% utilization target)
+
+### Token Impact
+
+**Compression Ratios:**
+| Operation | Raw Output | Compacted Return | Compression |
+|-----------|------------|------------------|-------------|
+| Glob pattern matching | 100-500 lines | 20-50 lines | 5-10× |
+| Grep code search | 500-2,000 lines | 50-100 lines | 10-20× |
+| Multiple file reads | 1,000-5,000 lines | 100-200 lines | 10-25× |
+| Code flow analysis | 2,000-10,000 lines | 200-300 lines | 10-35× |
+| Research phase | 12,000+ lines | 300 lines | 40× |
+
+**Overall Token Metrics:**
+- Single agents use ~4× more tokens than chat interactions
+- Multi-agent systems use ~15× more tokens than chats
+- BUT: subagents pattern processes 67% fewer tokens in parent context
+- Net effect: parent maintains reasoning capacity while subagents absorb verbose outputs
+
+**Context Utilization Thresholds:**
+- Target: 40-60% utilization in parent agent
+- Warning: 70% — quality degradation begins
+- Critical: 80%+ — insufficient room for effective reasoning
+- Subagent isolation prevents heavy operations from pushing past thresholds
+
+### Anthropic's Multi-Agent Research System
+
+Anthropic published their production multi-agent architecture for deep research:
+
+**Architecture:**
+- Lead agent coordinates, spawns specialized subagents in parallel
+- Each subagent: independent context, web search, document analysis
+- Subagents store artifacts externally, pass lightweight references back
+- Lead agent synthesizes findings, decides if more research needed
+- CitationAgent handles final processing and verification
+
+**Context Management Techniques:**
+1. **Plan Persistence**: Lead saves research plan to Memory to survive context truncation
+2. **Fresh Contexts**: Spawn new subagents with clean windows for each subtask
+3. **Artifact Handoffs**: Subagents write to external files, not context
+4. **Selective Synthesis**: Only most important tokens from each subagent enter lead context
+
+**Performance:**
+- 90.2% outperformance vs single-agent Claude Opus 4
+- Token usage explains 80% of performance variance
+- More tokens → better research quality (within limits)
+
+### Claude Code Implementation
+
+**Task Tool Subagents:**
+- Built-in `general-purpose` agent available without configuration
+- Custom agents defined in `.claude/agents/` directory or programmatically
+- Subagents cannot spawn their own subagents (prevents recursion)
+- Tool restrictions limit what each subagent can do
+
+**Invocation Patterns:**
+```python
+# Programmatic definition
+agents={
+    "code-reviewer": AgentDefinition(
+        description="Expert code review specialist",
+        prompt="You are a code review specialist...",
+        tools=["Read", "Grep", "Glob"],  # Read-only
+        model="sonnet"  # Cost-effective for focused tasks
+    )
+}
+```
+
+**Context Isolation Features:**
+- Separate context windows per subagent
+- Independent conversation history
+- Transcripts persist across sessions (resumable)
+- Automatic cleanup after configurable period (default 30 days)
+- Main conversation compaction doesn't affect subagent transcripts
+
+**Emerging Feature Requests:**
+- `isolated: true` parameter for zero-parent-context starts
+- Use case: QA/security reviews where reviewer shouldn't see creator's reasoning
+- Currently in discussion (GitHub issue #20304)
+
+### Implementation Path for OpenClaw
+
+**Immediate Opportunities:**
+
+1. **Identify Heavy Operations**: Map which tools/skills produce verbose output
+   - Codebase exploration (Glob, Grep, Read chains)
+   - Test execution and log analysis
+   - Documentation fetches and web research
+   - Multi-file refactoring analysis
+
+2. **Subagent Thresholds**: Trigger subagent delegation when:
+   - >20 files matched by Glob
+   - >5 files need to be read
+   - Test suite execution
+   - Web content fetch >2000 chars
+
+3. **Artifact-Based Returns**: For large outputs:
+   - Write findings to `research.md` or `analysis.md`
+   - Return only summary + file reference
+   - Parent reads artifact only if needed for decision-making
+
+4. **Model Selection**: Use cost-effective models for subagents:
+   - Haiku for simple file searches and summarization
+   - Sonnet for code analysis and research
+   - Opus for complex reasoning (reserve for parent)
+
+**Medium-term Enhancements:**
+
+5. **Parallel Execution**: Run independent subagents concurrently
+   - Security scan + test run + docs fetch simultaneously
+   - Reduces wall-clock time for multi-domain tasks
+
+6. **Pipeline Patterns**: Chain specialized agents for workflows
+   - Explore → Plan → Implement → Test → Review
+
+7. **Custom Subagents**: Create domain-specific agents
+   - `@security-auditor` — read-only, security-focused
+   - `@test-runner` — Bash + Read, test execution
+   - `@doc-researcher` — web fetch, summarization
+
+### Comparison with OpenClaw
+
+| Feature | OpenClaw Current | With Multi-agent Isolation |
+|---------|-----------------|---------------------------|
+| Heavy operations | In-context | Delegated to subagents |
+| Context utilization | Can reach 80%+ | Target 40-60% |
+| Tool outputs | Trimmed but in-context | Summarized returns only |
+| Parallel processing | Single thread | Concurrent subagents |
+| Model costs | Single model | Mixed (haiku/sonnet/opus) |
+| Artifact persistence | Daily logs | Subagent transcripts + artifacts |
+
+### Sources
+- [Anthropic: How We Built Our Multi-Agent Research System](https://www.anthropic.com/engineering/multi-agent-research-system)
+- [Claude Docs: Subagents in the SDK](https://platform.claude.com/docs/en/agent-sdk/subagents)
+- [DeepWiki: Sub-Agents and Context Isolation](https://deepwiki.com/humanlayer/advanced-context-engineering-for-coding-agents/4.3-sub-agents-and-context-isolation)
+- [RichSnapp: Context Management with Subagents](https://www.richsnapp.com/article/2025/10-05-context-management-with-subagents-in-claude-code)
+- [Paddo: Claude Code's Hidden Multi-Agent System](https://paddo.dev/blog/claude-code-hidden-swarm/)
+- [Vellum: Multi-Agent Systems with Context Engineering](https://www.vellum.ai/blog/multi-agent-systems-building-with-context-engineering)
+- [GitHub Issue #20304: Isolated Parameter for Task Tool](https://github.com/anthropics/claude-code/issues/20304)
+
+### Verdict: **RECOMMENDED**
+
+Multi-agent context isolation is a high-impact technique for reducing context bloat. Key findings:
+
+1. **40× compression possible** on research-heavy operations
+2. **67% fewer tokens in parent context** with subagent delegation
+3. **40-60% utilization target** maintains reasoning quality
+4. **Already available** via Claude Code Task tool and SDK
+
+**Priority recommendations for OpenClaw:**
+- Add subagent thresholds for heavy operations (>5 file reads, test runs, web fetches)
+- Use artifact-based returns for large outputs (write to file, return reference)
+- Implement parallel subagents for independent analyses
+- Create specialized subagents for common workflows (security audit, test execution)
+- Use cost-effective models (Haiku/Sonnet) for focused subagent tasks
+
+The technique complements other strategies: subagents can apply their own memory search, relevance scoring, and compression within their isolated contexts, providing multiplicative benefits.
+
+---
+
 ## Topics Remaining
-- Multi-agent context isolation patterns
 - Knowledge graphs & RAG approaches (Graphiti)
 
 ## Prioritized Recommendations

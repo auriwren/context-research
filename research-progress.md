@@ -50,11 +50,6 @@
 - Multi-agent systems can use 15× more tokens than chat — isolation helps but costs latency
 - OpenClaw already implements all 4 strategies; main opportunities are context awareness and server-side compaction upgrade
 
-**Next Steps:**
-- Multi-agent context isolation patterns
-- Knowledge graphs & RAG approaches (Graphiti)
-- Compile final recommendations
-
 ### Iteration 5 (2026-02-07)
 **Completed:**
 - Researched Dynamic Relevance Scoring techniques
@@ -68,7 +63,22 @@
 - Leading rerankers: Cohere Rerank 4 (32K context), BGE Reranker (open-source), RankZephyr (LLM-based)
 - JIT context selection: allocate context based on query complexity, not fixed ratios
 
+### Iteration 6 (2026-02-07)
+**Completed:**
+- Researched Multi-agent Context Isolation patterns
+
+**Key Findings:**
+- Subagent isolation achieves 10-40× compression on heavy operations (raw output → summary)
+- 67% fewer tokens in parent context with proper delegation
+- Target 40-60% context utilization in parent agent for optimal reasoning
+- Anthropic's multi-agent research system: 90.2% outperformance vs single-agent
+- Token usage explains 80% of performance variance in research tasks
+- Claude Code Task tool provides production-ready subagent infrastructure
+- Artifact-based communication: subagents write to files, return references (avoids transit through context)
+- Parallel subagents run concurrently for independent analyses (security + tests + docs)
+- Use Haiku/Sonnet for subagent work, reserve Opus for parent reasoning
+- Emerging feature: `isolated: true` parameter for zero-parent-context (GitHub #20304)
+
 **Next Steps:**
-- Multi-agent context isolation patterns
 - Knowledge graphs & RAG approaches (Graphiti)
 - Compile final recommendations

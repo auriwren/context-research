@@ -2,7 +2,6 @@
 
 ## Tasks
 
-- [ ] Research Multi-agent Context Isolation: patterns for heavy operations
 - [ ] Research Knowledge Graphs & RAG: Graphiti, context injection strategies
 - [ ] Compile final recommendations: prioritize findings, write verdict summaries
 
@@ -15,3 +14,4 @@
 - [x] Research A-Mem: analyze paper (arxiv 2502.12110), compare token efficiency to MemGPT
 - [x] Research Anthropic's Context Engineering: Write/Select/Compress/Isolate framework
 - [x] Research Dynamic Relevance Scoring: composite scoring, reranking, JIT context, TALE framework
+- [x] Research Multi-agent Context Isolation: patterns for heavy operations
